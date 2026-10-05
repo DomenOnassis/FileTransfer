@@ -1,2 +1,39 @@
 */node_modules
 */.env
+
+# Dependencies
+node_modules/
+
+# Build & Output Directories
+.svelte-kit/
+build/
+dist/
+
+# Local Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# Editor & System Files
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+
+# Logs & Temporary Files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Test / Coverage Reports
+/coverage
+/.nyc_output
