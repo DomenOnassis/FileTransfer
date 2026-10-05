@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 dotenv.config();
 

@@ -7,7 +7,7 @@ The project consists of 2 different methods of file transfer:
 
 Both methods are meant for simple file transfers between devices wirelessly and efficiently.
 
-## 1. Serverless file transfer
+## 1. P2P file transfer
 ### 1.1 Usecase
 - Device A wants to access the files stored on device B.
 - A starts a session and generates a unique ID and password.
