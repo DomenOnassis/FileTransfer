@@ -122,7 +122,7 @@
       <div class="space-y-1 max-h-32 overflow-y-auto">
         {#each files as file, index}
           <div class="flex items-center justify-between p-2 bg-neutral-900 border border-neutral-800 text-xs font-mono">
-            <span class="truncate max-w-[200px] text-neutral-200">{file.name}</span>
+            <span class="truncate max-w-50 text-neutral-200">{file.name}</span>
             <div class="flex items-center gap-2">
               <span class="text-neutral-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</span>
               <button onclick={() => removeFile(index)} class="text-neutral-500 hover:text-white border-none bg-transparent p-0">
