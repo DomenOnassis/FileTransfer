@@ -2,12 +2,12 @@
 
 The project consists of 2 different methods of file transfer:
 
-- P2P file transfer via a shared code between two anonymous accounts (nothing saved on server)
+- RTC P2P file transfer via a shared code between two anonymous accounts (nothing saved on server)
 - File transfer via QR code sequence
 
 Both methods are meant for simple file transfers between devices wirelessly and efficiently.
 
-## 1. P2P file transfer
+## 1. RTC P2P file transfer
 ### 1.1 Usecase
 - Device A wants to access the files stored on device B.
 - A starts a session and generates a unique ID and password.
