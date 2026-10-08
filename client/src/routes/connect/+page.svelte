@@ -1,4 +1,5 @@
 <script lang="ts">
+  let mySessionId = $state("123123AAA")
   let sessionIdInput = $state("");
   let sessionPwdInput = $state("");
   let isConnecting = $state(false);
@@ -57,6 +58,13 @@
           {isConnected ? 'Connected to Host' : isConnecting ? 'Awaiting Approval...' : 'Disconnected'}
         </span>
       </div>
+    </div>
+
+    <div class="flex items-center justify-left gap-5 text-sm">
+      <span class="text-neutral-400 font-mono text-xs uppercase tracking-wider">My ID</span>
+      <code class="font-mono bg-neutral-950 px-2.5 py-1 rounded-none text-white font-semibold border border-neutral-800">
+          {mySessionId}
+      </code>
     </div>
 
     {#if !isConnected && !isConnecting}
