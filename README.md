@@ -4,7 +4,8 @@
 
 <img width="2770" height="1560" alt="image" src="https://github.com/user-attachments/assets/eb4157ca-e27d-4785-a89a-96e885265705" />
 
-<img width="2770" height="1560" alt="image" src="https://github.com/user-attachments/assets/4730a550-bc07-4e24-99e0-58a057ad4792" />
+<img width="2770" height="1560" alt="image" src="https://github.com/user-attachments/assets/62698133-9420-42aa-a23d-6f7f533db616" />
+
 
 
 ## 1. RTC P2P file transfer
