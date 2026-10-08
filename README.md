@@ -25,10 +25,3 @@ That is its only role.
 The sender selects the files and presses [ SEND ], then the files are encrypted and sent via WebRTC.
 
 Recipient selects save folder, decrypts and saves the files.
-
-
-### 1.3 How are files sent?
-
-### 1.4 How are files downloaded?
-
-## 2. FT via QR code sequence
