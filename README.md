@@ -1,5 +1,12 @@
 # FileTransfer
 
+<img width="2770" height="1560" alt="image" src="https://github.com/user-attachments/assets/f78a7676-0030-4cb1-9698-90b6a413f08a" />
+
+<img width="2770" height="1560" alt="image" src="https://github.com/user-attachments/assets/eb4157ca-e27d-4785-a89a-96e885265705" />
+
+<img width="2770" height="1560" alt="image" src="https://github.com/user-attachments/assets/4730a550-bc07-4e24-99e0-58a057ad4792" />
+
+
 ## 1. RTC P2P file transfer
 ### 1.1 Usecase
 - Device A wants to access the files stored on device B.
