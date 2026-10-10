@@ -2,7 +2,6 @@ import http from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
 import { randomInt, randomBytes, timingSafeEqual } from "node:crypto";
-import { type MsgJoinSession, type MsgConfirmPeer } from "./type.js";
 
 dotenv.config();
 
