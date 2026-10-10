@@ -2,6 +2,7 @@ import http from "http"
 import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
 import { randomInt } from "node:crypto";
+import { type MsgJoinSession, type MsgConfirmPeer } from "./type.js";
 
 dotenv.config();
 
@@ -83,13 +84,14 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "join") {
-      const session = sessions.get(msg.code);
-      if (!session || session.password !== msg.passwordHash) {
-        ws.send(JSON.stringify({ type: "error", message: "Invalid code or password" }));
+      const joinMsg = msg as MsgJoinSession;
+      const session = sessions.get(joinMsg.id);
+      if (!session || session.password !== joinMsg.password) {
+        ws.send(JSON.stringify({ type: "error", message: "Invalid session ID or password" }));
         return;
       }
-      globalSession.id = msg.code;
-      peerId = genId();
+      globalSession.id = joinMsg.id;
+      peerId = joinMsg.clientId;
       isHost = false;
       session.host.send(JSON.stringify({ type: "connection-request", peerId }));
       ws.send(JSON.stringify({ type: "awaiting-confirmation", peerId }));
@@ -97,17 +99,18 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "confirm-peer" && isHost && globalSession.id) {
+      const confMsg = msg as MsgConfirmPeer;
       const session = sessions.get(globalSession.id);
       if (!session) return;
 
-      if (msg.accepted) {
-        session.peers.set(msg.peerId, ws);
-        const targetWs = session.peers.get(msg.peerId);
-        targetWs?.send(JSON.stringify({ type: "joined", code: globalSession.id, peerId: msg.peerId }));
+      if (confMsg.accepted) {
+        session.peers.set(confMsg.peerId, ws);
+        const targetWs = session.peers.get(confMsg.peerId);
+        targetWs?.send(JSON.stringify({ type: "joined", code: globalSession.id, peerId: confMsg.peerId }));
       } else {
-        const targetWs = session.peers.get(msg.peerId);
+        const targetWs = session.peers.get(confMsg.peerId);
         targetWs?.send(JSON.stringify({ type: "error", message: "Host rejected connection" }));
-        session.peers.delete(msg.peerId);
+        session.peers.delete(confMsg.peerId);
       }
       return;
     }
