@@ -1,16 +1,25 @@
 <script lang="ts">
-  let sessionId = $state("0123456");
-  let sessionPwd = $state("asdfghi");
-  let connectedPeers = $state<string[]>([]);
+  import { onMount } from "svelte";
+  import { Session } from "#lib/session.svelte.ts";
+
+  const session = new Session();
+
   let files = $state<File[]>([]);
   let isTransmitting = $state(false);
   let progress = $state(0);
 
+  const sessionId = $derived(session.info?.id ?? "...");
+  const sessionPwd = $derived(session.info?.password ?? "...");
+  const connectedPeers = $derived(session.peers);
+
+  onMount(() => {
+    session.host();
+    return () => session.close(); // leaving the page ends the session
+  });
+
   function handleFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
-    if (input.files) {
-      files = [...files, ...Array.from(input.files)];
-    }
+    if (input.files) files = [...files, ...Array.from(input.files)];
   }
 
   function removeFile(index: number) {
@@ -43,6 +52,13 @@
 
   <div class="w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-none p-6 shadow-2xl space-y-6">
 
+    {#if session.status === "error" || session.status === "closed"}
+      <button onclick={() => session.host()}
+        class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white cursor-pointer">
+        Start new session
+      </button>
+    {/if}
+
     <!-- Status Indicator -->
     <div class="flex items-center justify-between border-b border-neutral-800 pb-3">
       <span class="text-xs font-mono uppercase tracking-widest text-neutral-400">
@@ -51,7 +67,13 @@
       <div class="flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
         <span class="text-xs font-mono uppercase tracking-wider text-white">
-          {connectedPeers.length > 0 ? `Connected (${connectedPeers.length})` : 'Waiting for peers'}
+          {#if session.status === "error"}
+            {session.error}
+          {:else if connectedPeers.length > 0}
+            Connected ({connectedPeers.length})
+          {:else}
+            Waiting for peers
+          {/if}
         </span>
       </div>
     </div>
@@ -82,6 +104,25 @@
       </div>
     </div>
 
+    {#if session.requests.length > 0}
+      <div class="space-y-2">
+        <span class="text-xs font-mono uppercase tracking-widest text-amber-400 block">
+          // Connection Requests
+        </span>
+        {#each session.requests as r (r.peerId)}
+          <div class="flex items-center justify-between p-2 bg-neutral-900 border border-amber-400/50 text-xs font-mono text-neutral-300">
+            <span class="truncate">{r.deviceName ?? r.peerId}</span>
+            <div class="flex gap-2">
+              <button onclick={() => session.respond(r.peerId, true)}
+                class="bg-white text-black px-2 py-1 uppercase font-bold hover:bg-neutral-200 cursor-pointer">Accept</button>
+              <button onclick={() => session.respond(r.peerId, false)}
+                class="border border-neutral-700 text-neutral-400 px-2 py-1 uppercase hover:text-white cursor-pointer">Reject</button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
     <!-- Connected Peers List -->
     <div class="space-y-2">
       <span class="text-xs font-mono uppercase tracking-widest text-neutral-400 block">
@@ -95,7 +136,7 @@
         <div class="space-y-1">
           {#each connectedPeers as peer}
             <div class="flex items-center justify-between p-2 bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-300">
-              <span>{peer}</span>
+              <span>{peer.deviceName ?? peer.peerId}</span>
               <span class="text-emerald-400 text-[10px] uppercase">Active</span>
             </div>
           {/each}
