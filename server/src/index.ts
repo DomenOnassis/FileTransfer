@@ -150,49 +150,50 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    if (msg.type === "confirm-peer" && isHost && globalSession.id) {
-      const confMsg = msg as MsgConfirmPeer;
-      const session = sessions.get(globalSession.id);
-      if (!session) return;
+    if (msg.type === "confirm-peer") {
+      if (role !== "host" || !sessionId) return;
+      const s = sessions.get(sessionId);
+      if (!s || typeof msg.peerId !== "string") return;
 
-      if (confMsg.accepted) {
-        session.peers.set(confMsg.peerId, ws);
-        const targetWs = session.peers.get(confMsg.peerId);
-        targetWs?.send(JSON.stringify({ type: "joined", code: globalSession.id, peerId: confMsg.peerId }));
+      const target = s.pending.get(msg.peerId);
+      if (!target) return;
+      s.pending.delete(msg.peerId);
+
+      if (msg.accepted === true) {
+        s.peers.set(msg.peerId, target);
+        send(target, { type: "joined", code: sessionId, peerId: msg.peerId });
       } else {
-        const targetWs = session.peers.get(confMsg.peerId);
-        targetWs?.send(JSON.stringify({ type: "error", message: "Host rejected connection" }));
-        session.peers.delete(confMsg.peerId);
+        send(target, { type: "error", message: "Host rejected connection" });
+        target.close();
       }
       return;
     }
 
-    if (msg.type === "signal" && globalSession.id) {
-      const session = sessions.get(globalSession.id);
-      if (!session) return;
+    if (msg.type === "signal") {
+      if (!sessionId) return;
+      const s = sessions.get(sessionId);
+      if (!s) return;
 
-      if (isHost && msg.targetPeerId) {
-        const target = session.peers.get(msg.targetPeerId);
-        target?.send(JSON.stringify({ type: "signal", data: msg.data, fromPeerId: "host" }));
-      } else if (!isHost && peerId) {
-        session.host.send(JSON.stringify({ type: "signal", data: msg.data, fromPeerId: peerId }));
+      if (role === "host" && typeof msg.targetPeerId === "string") {
+        send(s.peers.get(msg.targetPeerId),{ type: "signal", data: msg.data, fromPeerId: "host" });
+      } else if (role === "peer" && peerId && s.peers.has(peerId)) {
+        send(s.host, { type: "signal", data: msg.data, fromPeerId: peerId });
       }
+      return;
     }
   });
 
   ws.on("close", () => {
-    if (!globalSession.id) return;
-    const session = sessions.get(globalSession.id);
-    if (!session) return;
+    if (!sessionId) return;
+    const s = sessions.get(sessionId);
+    if (!s) return;
 
-    if (isHost) {
-      for (const peerWs of session.peers.values()) {
-        peerWs.send(JSON.stringify({ type: "host-left" }));
-      }
-      sessions.delete(globalSession.id);
-    } else if (peerId) {
-      session.peers.delete(peerId);
-      session.host.send(JSON.stringify({ type: "peer-left", peerId }));
+    if (role === "host") {
+      destroySession(sessionId, { type: "host-left" });
+    } else if (role === "peer" && peerId) {
+      s.peers.delete(peerId);
+      s.pending.delete(peerId);
+      send(s.host, { type: "peer-left", peerId });
     }
   });
 });
