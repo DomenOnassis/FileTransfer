@@ -1,4 +1,4 @@
-const WS_URL = import.meta.env.VITE_SIGNALING_URL ?? "ws://localhost:3000";
+const WS_URL = import.meta.env.VITE_SIGNALING_URL ?? "ws://localhost:3003";
 
 type Status =
   | "idle"

@@ -5,7 +5,7 @@ import { randomInt, randomBytes, timingSafeEqual } from "node:crypto";
 
 dotenv.config();
 
-const port = parseInt(process.env.PORT || "3000");
+const port = parseInt(process.env.PORT || "3003");
 const SESSION_JOIN_TTL_MS = 5 * 60 * 1000;
 const MAX_BAD_PASSWORDS = 5;
 const ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
