@@ -1,28 +1,27 @@
 <script lang="ts">
-  let mySessionId = $state("123123AAA")
+  import { onMount } from "svelte";
+  import { Session } from "#lib/session.svelte.ts";
+
+  const session = new Session();
+
   let sessionIdInput = $state("");
   let sessionPwdInput = $state("");
-  let isConnecting = $state(false);
-  let isConnected = $state(false);
   let savePath = $state("");
   let incomingFiles = $state<Array<{ name: string; size: string; status: string; progress: number }>>([]);
+
+  const isConnecting = $derived(session.status === "connecting" || session.status === "awaiting-confirmation");
+  const isConnected = $derived(session.status === "connected");
+
+  onMount(() => () => session.close());
 
   function handleConnect(e: SubmitEvent) {
     e.preventDefault();
     if (!sessionIdInput || !sessionPwdInput) return;
-    
-    isConnecting = true;
-
-    // TODO: Initiate WebSockets handshake & host approval request
-    setTimeout(() => {
-      isConnecting = false;
-      isConnected = true;
-    }, 1500);
+    session.join(sessionIdInput, sessionPwdInput, navigator.platform);
   }
 
   function disconnect() {
-    isConnected = false;
-    isConnecting = false;
+    session.close();
     sessionIdInput = "";
     sessionPwdInput = "";
   }
@@ -60,12 +59,9 @@
       </div>
     </div>
 
-    <div class="flex items-center justify-left gap-5 text-sm">
-      <span class="text-neutral-400 font-mono text-xs uppercase tracking-wider">My ID</span>
-      <code class="font-mono bg-neutral-950 px-2.5 py-1 rounded-none text-white font-semibold border border-neutral-800">
-          {mySessionId}
-      </code>
-    </div>
+    {#if session.error}
+      <p class="text-xs font-mono text-red-400 uppercase">{session.error}</p>
+    {/if}
 
     {#if !isConnected && !isConnecting}
       <!-- Connection Form -->
