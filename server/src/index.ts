@@ -1,9 +1,17 @@
+import http from "http"
 import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
+import { randomInt } from "node:crypto";
 
 dotenv.config();
 
 const port = parseInt(process.env.PORT || "3000");
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Signaling server is running\n");
+});
+
 const wss = new WebSocketServer({ port });
 
 interface Peer {
@@ -13,36 +21,41 @@ interface Peer {
 
 interface Session {
   host: WebSocket;
-  passwordHash: string;
+  password: string;
   peers: Map<string, WebSocket>;
   createdAt: number;
 }
 
 const sessions = new Map<string, Session>();
 
-function genCode(): string {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
-}
-
 function genId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function genPwd(length: number = 12): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars[randomInt(chars.length)];
+  }
+  return result;
+}
+
 setInterval(() => {
   const now = Date.now();
-  for (const [code, session] of sessions) {
+  for (const [id, session] of sessions) {
     if (now - session.createdAt > 5 * 60 * 1000) {
       session.host.send(JSON.stringify({ type: "session-expired" }));
       for (const peerWs of session.peers.values()) {
         peerWs.send(JSON.stringify({ type: "session-expired" }));
       }
-      sessions.delete(code);
+      sessions.delete(id);
     }
   }
 }, 30_000);
 
 wss.on("connection", (ws) => {
-  let sessionCode: string | null = null;
+  let globalSession: { id: string, password: string };
   let peerId: string | null = null;
   let isHost = false;
 
@@ -55,26 +68,27 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "create") {
-      const code = genCode();
-      sessions.set(code, {
+      const id = genId();
+      const password = genPwd();
+      sessions.set(id, {
         host: ws,
-        passwordHash: msg.passwordHash,
+        password: password,
         peers: new Map(),
         createdAt: Date.now(),
       });
-      sessionCode = code;
+      globalSession = {id, password}
       isHost = true;
-      ws.send(JSON.stringify({ type: "created", code }));
+      ws.send(JSON.stringify({ type: "created", session: { id: id, password: password } }));
       return;
     }
 
     if (msg.type === "join") {
       const session = sessions.get(msg.code);
-      if (!session || session.passwordHash !== msg.passwordHash) {
+      if (!session || session.password !== msg.passwordHash) {
         ws.send(JSON.stringify({ type: "error", message: "Invalid code or password" }));
         return;
       }
-      sessionCode = msg.code;
+      globalSession.id = msg.code;
       peerId = genId();
       isHost = false;
       session.host.send(JSON.stringify({ type: "connection-request", peerId }));
@@ -82,14 +96,14 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    if (msg.type === "confirm-peer" && isHost && sessionCode) {
-      const session = sessions.get(sessionCode);
+    if (msg.type === "confirm-peer" && isHost && globalSession.id) {
+      const session = sessions.get(globalSession.id);
       if (!session) return;
 
       if (msg.accepted) {
         session.peers.set(msg.peerId, ws);
         const targetWs = session.peers.get(msg.peerId);
-        targetWs?.send(JSON.stringify({ type: "joined", code: sessionCode, peerId: msg.peerId }));
+        targetWs?.send(JSON.stringify({ type: "joined", code: globalSession.id, peerId: msg.peerId }));
       } else {
         const targetWs = session.peers.get(msg.peerId);
         targetWs?.send(JSON.stringify({ type: "error", message: "Host rejected connection" }));
@@ -98,8 +112,8 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    if (msg.type === "signal" && sessionCode) {
-      const session = sessions.get(sessionCode);
+    if (msg.type === "signal" && globalSession.id) {
+      const session = sessions.get(globalSession.id);
       if (!session) return;
 
       if (isHost && msg.targetPeerId) {
@@ -112,15 +126,15 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    if (!sessionCode) return;
-    const session = sessions.get(sessionCode);
+    if (!globalSession.id) return;
+    const session = sessions.get(globalSession.id);
     if (!session) return;
 
     if (isHost) {
       for (const peerWs of session.peers.values()) {
         peerWs.send(JSON.stringify({ type: "host-left" }));
       }
-      sessions.delete(sessionCode);
+      sessions.delete(globalSession.id);
     } else if (peerId) {
       session.peers.delete(peerId);
       session.host.send(JSON.stringify({ type: "peer-left", peerId }));
