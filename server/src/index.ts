@@ -27,9 +27,10 @@ interface Peer {
 interface Session {
   host: WebSocket;
   password: string;
-  pending: Map<string, WebSocket>;y
+  pending: Map<string, WebSocket>;
   peers: Map<string, WebSocket>;
   createdAt: number;
+  badAttempts: number;
 }
 
 const sessions = new Map<string, Session>();
@@ -92,9 +93,10 @@ setInterval(() => {
 wss.on("connection", (ws) => {
   ws.on("pong", () => alive.set(ws, true));
 
-  let globalSession: { id: string, password: string };
+  let role: "none" | "host" | "peer" = "none";
+  let sessionId: string | null = null;
   let peerId: string | null = null;
-  let isHost = false;
+  let accepted = false;
 
   ws.on("message", (raw) => {
     let msg: any;
@@ -103,19 +105,20 @@ wss.on("connection", (ws) => {
     } catch {
       return;
     }
+    if (!msg || typeof msg.type !== "string") return;
 
     if (msg.type === "create") {
-      const id = genId();
+      if (role !== "none") return;
+      const id = genSessionId();
       const password = genPwd();
       sessions.set(id, {
-        host: ws,
-        password: password,
-        peers: new Map(),
-        createdAt: Date.now(),
+        host: ws, password,
+        pending: new Map(), peers: new Map(),
+        createdAt: Date.now(), badAttempts: 0,
       });
-      globalSession = {id, password}
-      isHost = true;
-      ws.send(JSON.stringify({ type: "created", session: { id: id, password: password } }));
+      role = "host";
+      sessionId = id;
+      send(ws, { type: "created", session: { id, password } });
       return;
     }
 
