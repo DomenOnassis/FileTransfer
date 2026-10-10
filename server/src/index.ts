@@ -197,4 +197,6 @@ wss.on("connection", (ws) => {
   });
 });
 
-console.log(`signaling server running on port ${port}`);
+server.listen(port, () => {
+  console.log(`signaling server running on port ${port}`);
+});
