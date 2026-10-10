@@ -73,14 +73,19 @@ function destroySession(id: string, notify: object) {
 
 setInterval(() => {
   const now = Date.now();
-  for (const [id, session] of sessions) {
-    if (now - session.createdAt > 5 * 60 * 1000) {
-      session.host.send(JSON.stringify({ type: "session-expired" }));
-      for (const peerWs of session.peers.values()) {
-        peerWs.send(JSON.stringify({ type: "session-expired" }));
-      }
-      sessions.delete(id);
+  for (const [id, s] of sessions) {
+    if (s.peers.size === 0 && now - s.createdAt > SESSION_JOIN_TTL_MS) {
+      destroySession(id, { type: "session-expired" });
     }
+  }
+}, 30_000);
+
+const alive = new WeakMap<WebSocket, boolean>();
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (alive.get(ws) === false) { ws.terminate(); continue; }
+    alive.set(ws, false);
+    ws.ping();
   }
 }, 30_000);
 
