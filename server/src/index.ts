@@ -1,19 +1,23 @@
-import http from "http"
+import http from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
-import { randomInt } from "node:crypto";
+import { randomInt, randomBytes, timingSafeEqual } from "node:crypto";
 import { type MsgJoinSession, type MsgConfirmPeer } from "./type.js";
 
 dotenv.config();
 
 const port = parseInt(process.env.PORT || "3000");
+const SESSION_JOIN_TTL_MS = 5 * 60 * 1000;
+const MAX_BAD_PASSWORDS = 5;
+const ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PWD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Signaling server is running\n");
 });
 
-const wss = new WebSocketServer({ port });
+const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 
 interface Peer {
   ws: WebSocket;
@@ -23,23 +27,48 @@ interface Peer {
 interface Session {
   host: WebSocket;
   password: string;
+  pending: Map<string, WebSocket>;y
   peers: Map<string, WebSocket>;
   createdAt: number;
 }
 
 const sessions = new Map<string, Session>();
 
-function genId(): string {
-  return Math.random().toString(36).slice(2, 10);
+function randomString(alphabet: string, length: number): string {
+  let out = "";
+  for (let i = 0; i < length; i++) out += alphabet[randomInt(alphabet.length)];
+  return out;
 }
 
-function genPwd(length: number = 12): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars[randomInt(chars.length)];
+function genSessionId(): string {
+  let id: string;
+  do {
+    id = randomString(ID_ALPHABET, 8);
+  } while (sessions.has(id));
+  return id;
+}
+
+const genPwd = (length = 12) => randomString(PWD_ALPHABET, length);
+const genPeerId = () => randomBytes(6).toString("hex");
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
+
+function send(ws: WebSocket | undefined, payload: object) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+}
+
+function destroySession(id: string, notify: object) {
+  const s = sessions.get(id);
+  if (!s) return;
+  sessions.delete(id);
+  for (const ws of [s.host, ...s.peers.values(), ...s.pending.values()]) {
+    send(ws, notify);
+    ws.close();
   }
-  return result;
 }
 
 setInterval(() => {
