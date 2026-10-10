@@ -123,7 +123,7 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "join") {
       if (role !== "none") return;
-      if (typeof msg.id !== "string" || typeof msg.password !== "string" || typeof msg.peerId !== "string") return;
+      if (typeof msg.id !== "string" || typeof msg.password !== "string") return;
 
       const s = sessions.get(msg.id.toUpperCase());
       if (!s) {
@@ -140,7 +140,7 @@ wss.on("connection", (ws) => {
 
       role = "peer";
       sessionId = msg.id.toUpperCase();
-      peerId = msg.peerId;
+      peerId = genPeerId();  
       s.pending.set(peerId!, ws);
 
       const deviceName = typeof msg.deviceName === "string" ? msg.deviceName.slice(0, 40) : undefined;
@@ -150,12 +150,16 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "confirm-peer") {
-      if (role !== "host" || !sessionId) return;
+      console.log("[confirm-peer]", { role, sessionId, msg });
+      if (role !== "host" || !sessionId) { console.log("-> not host / no session"); return; };
       const s = sessions.get(sessionId);
-      if (!s || typeof msg.peerId !== "string") return;
+      if (!s || typeof msg.peerId !== "string") { console.log("-> no session / bad peerId"); return; };
 
       const target = s.pending.get(msg.peerId);
-      if (!target) return;
+      if (!target) {
+        console.log("-> peerId not in pending:", [...s.pending.keys()]);
+        return;
+      }
       s.pending.delete(msg.peerId);
 
       if (msg.accepted === true) {

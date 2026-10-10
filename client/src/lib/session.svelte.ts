@@ -69,11 +69,16 @@ export class Session {
             reject(new Error("ws error"));
         };
         ws.onclose = () => {
-            // keep "error" visible; otherwise mark closed
             if (this.status !== "error") this.status = "closed";
         };
         ws.onmessage = (e) => {
-            try { this.#onMessage(JSON.parse(e.data)); } catch {}
+            try {
+                const msg = JSON.parse(e.data);
+                console.log("[ws in]", msg);
+                this.#onMessage(msg);
+            } catch (err) {
+                console.error("[ws] handler failed", err);
+            }
         };
         });
     }
