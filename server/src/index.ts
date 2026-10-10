@@ -123,17 +123,30 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "join") {
-      const joinMsg = msg as MsgJoinSession;
-      const session = sessions.get(joinMsg.id);
-      if (!session || session.password !== joinMsg.password) {
-        ws.send(JSON.stringify({ type: "error", message: "Invalid session ID or password" }));
+      if (role !== "none") return;
+      if (typeof msg.id !== "string" || typeof msg.password !== "string" || typeof msg.peerId !== "string") return;
+
+      const s = sessions.get(msg.id.toUpperCase());
+      if (!s) {
+        send(ws, { type: "error", message: "Invalid session ID or password" });
         return;
       }
-      globalSession.id = joinMsg.id;
-      peerId = joinMsg.clientId;
-      isHost = false;
-      session.host.send(JSON.stringify({ type: "connection-request", peerId }));
-      ws.send(JSON.stringify({ type: "awaiting-confirmation", peerId }));
+      if (!safeEqual(s.password, msg.password)) {
+        send(ws, { type: "error", message: "Invalid session ID or password" });
+        if (++s.badAttempts >= MAX_BAD_PASSWORDS) {
+          destroySession(msg.id.toUpperCase(), { type: "session-expired" });
+        }
+        return;
+      }
+
+      role = "peer";
+      sessionId = msg.id.toUpperCase();
+      peerId = msg.peerId;
+      s.pending.set(peerId!, ws);
+
+      const deviceName = typeof msg.deviceName === "string" ? msg.deviceName.slice(0, 40) : undefined;
+      send(s.host, { type: "connection-request", peerId, deviceName });
+      send(ws, { type: "awaiting-confirmation", peerId });
       return;
     }
 
