@@ -90,6 +90,8 @@ setInterval(() => {
 }, 30_000);
 
 wss.on("connection", (ws) => {
+  ws.on("pong", () => alive.set(ws, true));
+
   let globalSession: { id: string, password: string };
   let peerId: string | null = null;
   let isHost = false;
