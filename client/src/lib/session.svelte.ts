@@ -147,6 +147,7 @@ export class Session {
     }
 
     close() {
+        this.#teardown();
         this.#ws?.close();
         this.#ws = undefined;
         this.status = "closed";
@@ -206,7 +207,7 @@ export class Session {
     }
 
     #fail(message: string) {
-        this.#teardown;
+        this.#teardown();
         this.error = message;
         this.status = "error";
     }
@@ -243,6 +244,7 @@ export class Session {
                 break;
 
             case "signal":
+                console.log("[signal in]", msg.data?.sdp?.type ?? (msg.data?.candidate ? "candidate" : "?"));
                 this.#enqueue(msg.fromPeerId, () => this.#handleSignal(msg.fromPeerId, msg.data));
                 break;
 
@@ -265,14 +267,16 @@ export class Session {
         this.#pcs.set(key, pc);
 
         pc.onicecandidate = (e) => {
-            if(e.candidate) this.#signal(key, { candidate: e.candidate.toJSON() });
+            if (e.candidate) this.#signal(key, { candidate: e.candidate.toJSON() });
         };
-
+        pc.onicecandidateerror = (e) => console.log("[candidate-error]", key, (e as RTCPeerConnectionIceErrorEvent).errorText);
+        pc.oniceconnectionstatechange = () => console.log("[ice]", key, pc.iceConnectionState);
         pc.onconnectionstatechange = () => {
-            if(pc.connectionState === "failed" || pc.connectionState === "closed") {
+            console.log("[pc]", key, pc.connectionState);
+            if (pc.connectionState === "failed" || pc.connectionState === "closed") {
                 this.#setLink(key, "closed");
             }
-        }
+        };
 
         if(initiator) {
             this.#bindChannel(key, pc.createDataChannel("files"));
@@ -320,7 +324,7 @@ export class Session {
             for(const c of queued) await pc.addIceCandidate(c);
             if(data.sdp.type === "offer") {
                 await pc.setLocalDescription(await pc.createAnswer());
-                this.#handleSignal(key, { sdp: pc.localDescription });
+                this.#signal(key, { sdp: pc.localDescription });
             }
         } else if(data?.candidate) {
             if(pc.remoteDescription) {
@@ -384,7 +388,7 @@ export class Session {
                 }
             } else if(m.t === "end") {
                 const rx = this.#rx;
-                if(!rx || rx.entry !== m.id) return;
+                if(!rx || rx.entry.id !== m.id) return;
                 this.#rx = null;
                 if(rx.entry.done !== rx.entry.size) {
                     rx.writer?.abort().catch(() => {});
