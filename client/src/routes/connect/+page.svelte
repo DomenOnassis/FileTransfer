@@ -6,11 +6,26 @@
 
   let sessionIdInput = $state("");
   let sessionPwdInput = $state("");
-  let savePath = $state("");
-  let incomingFiles = $state<Array<{ name: string; size: string; status: string; progress: number }>>([]);
 
   const isConnecting = $derived(session.status === "connecting" || session.status === "awaiting-confirmation");
   const isConnected = $derived(session.status === "connected");
+  const canPickFolder = typeof window !== "undefined" && "showDirectoryPicker" in window;
+  const savePath = $derived(session.saveDir?.name ?? "");
+
+  async function browse() {
+    try {
+      session.saveDir = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+    } catch {}
+  }
+
+  function fmt(bytes: number) {
+    if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function pct(f: { done: number; size: number }) {
+    return f.size ? Math.min((f.done / f.size) * 100) : 100;
+  }
 
   onMount(() => () => session.close());
 
@@ -129,13 +144,15 @@
           <div class="flex gap-2 w-full">
             <input 
               type="text" 
-              bind:value={savePath}
-              placeholder="Select folder..." 
+              value={savePath}
+              placeholder={canPickFolder ? "Select folder..." : "Browser will download files"}
               readonly
               class="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-800 font-mono text-xs text-white placeholder-neutral-600 focus:outline-none"
             />
             <button 
               type="button"
+              onclick={browse}
+              disabled={!canPickFolder}
               class="bg-neutral-900 border border-neutral-800 text-white font-mono text-xs uppercase px-3 py-2 hover:bg-neutral-800"
             >
               Browse
@@ -149,26 +166,26 @@
             // Incoming Files
           </span>
           
-          {#if incomingFiles.length === 0}
+          {#if session.incoming.length === 0}
             <div class="p-6 bg-neutral-900/40 border border-neutral-800 text-center text-xs font-mono text-neutral-500 uppercase">
-              Ready to receive files...
+              {session.link === "open" ? "Ready to receive files..." : "Established direct link..."}
             </div>
           {:else}
             <div class="space-y-2 max-h-48 overflow-y-auto">
-              {#each incomingFiles as file}
+              {#each session.incoming as file (file.id)}
                 <div class="p-2.5 bg-neutral-900 border border-neutral-800 text-xs font-mono space-y-2">
                   <div class="flex items-center justify-between">
                     <span class="truncate max-w-45 text-neutral-200">{file.name}</span>
-                    <span class="text-neutral-500">{file.size}</span>
+                    <span class="text-neutral-500">{fmt(file.size)}</span>
                   </div>
                   
                   <div class="space-y-1">
                     <div class="flex justify-between text-[10px] text-neutral-400 uppercase">
-                      <span>{file.status}</span>
-                      <span>{file.progress}%</span>
+                      <span>{file.state}</span>
+                      <span>{pct(file)}%</span>
                     </div>
                     <div class="w-full bg-neutral-950 border border-neutral-800 h-1.5">
-                      <div class="bg-white h-full transition-all duration-200" style="width: {file.progress}%"></div>
+                      <div class="bg-white h-full transition-all duration-200" style="width: {pct(file)}%"></div>
                     </div>
                   </div>
                 </div>
