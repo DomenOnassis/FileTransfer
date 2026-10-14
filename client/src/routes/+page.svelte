@@ -2,12 +2,10 @@
     import { goto } from '$app/navigation';
 
     function startSession() {
-        // TODO: logic
         goto("/session");
     }
 
     function connectToSession() {
-        // TODO: logic
         goto("/connect")
     }
 </script>

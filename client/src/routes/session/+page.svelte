@@ -5,8 +5,6 @@
   const session = new Session();
 
   let files = $state<File[]>([]);
-  let isTransmitting = $state(false);
-  let progress = $state(0);
 
   const sessionId = $derived(session.info?.id ?? "...");
   const sessionPwd = $derived(session.info?.password ?? "...");
@@ -14,7 +12,7 @@
 
   onMount(() => {
     session.host();
-    return () => session.close(); // leaving the page ends the session
+    return () => session.close();
   });
 
   function handleFileSelect(event: Event) {
@@ -26,10 +24,12 @@
     files = files.filter((_, i) => i !== index);
   }
 
-  function sendFiles() {
-    if (files.length === 0) return;
-    isTransmitting = true;
-    progress = 0;
+  const canSend = $derived(files.length > 0 && !session.sending && session.peers.some((p) => p.link === "open"));
+  
+  async function sendFiles() {
+    if(!canSend) return;
+    await session.send(files);
+    files = [];
   }
 </script>
 
@@ -137,7 +137,9 @@
           {#each connectedPeers as peer}
             <div class="flex items-center justify-between p-2 bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-300">
               <span>{peer.deviceName ?? peer.peerId}</span>
-              <span class="text-emerald-400 text-[10px] uppercase">Active</span>
+              <span class="text-[10px] uppercase {peer.link === 'open' ? 'text-emerald-400' : 'text.amber.400'}">
+                {peer.link === "open" ? "Active" : peer.link === "closed" ? "Closed" : "Linking"}
+              </span>
             </div>
           {/each}
         </div>
@@ -175,23 +177,21 @@
       </div>
     {/if}
 
-    <!-- Live Progress Indicator -->
-    {#if isTransmitting}
-      <div class="space-y-1">
-        <div class="flex justify-between text-xs font-mono text-neutral-400 uppercase">
-          <span>Transmitting...</span>
-          <span>{progress}%</span>
-        </div>
-        <div class="w-full bg-neutral-900 border border-neutral-800 h-2">
-          <div class="bg-white h-full transition-all duration-200" style="width: {progress}%"></div>
-        </div>
+  {#if session.sending}
+    <div class="space-y-1">
+      <div class="flex justify-between text-xs font-mono text-neutral-400 uppercase">
+        <span>Transmitting...</span>
+        <span>{session.progress}%</span>
       </div>
-    {/if}
+      <div class="w-full bg-neutral-900 border border-neutral-800 h-2">
+        <div class="bg-white h-full transition-all duration-200" style="width: {session.progress}%"></div>
+      </div>
+    </div>
+  {/if}
 
-    <!-- Action Button -->
     <button 
       onclick={sendFiles}
-      disabled={files.length === 0}
+      disabled={!canSend}
       class="w-full bg-white text-black border border-white font-mono text-xs uppercase tracking-widest py-3 font-bold hover:bg-neutral-200 disabled:opacity-30 disabled:hover:bg-white transition-colors cursor-pointer"
     >
       Send Encrypted Files
