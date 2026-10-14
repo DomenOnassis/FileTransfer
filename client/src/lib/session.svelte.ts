@@ -23,7 +23,7 @@ type Peer = { peerId: string; deviceName?: string; link?: Link };
 export type Incoming = {
     id: string;
     name: string;
-    size: string;
+    size: number;
     done: number;
     state: "active" | "done" | "failed";
 }
@@ -386,7 +386,7 @@ export class Session {
                 const rx = this.#rx;
                 if(!rx || rx.entry !== m.id) return;
                 this.#rx = null;
-                if(rx.entry.done !== Number(rx.entry.size)) {
+                if(rx.entry.done !== rx.entry.size) {
                     rx.writer?.abort().catch(() => {});
                     rx.entry.state = "failed";
                     return;
