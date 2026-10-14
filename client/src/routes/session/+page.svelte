@@ -14,7 +14,7 @@
 
   onMount(() => {
     session.host();
-    return () => session.close(); // leaving the page ends the session
+    return () => session.close();
   });
 
   function handleFileSelect(event: Event) {
