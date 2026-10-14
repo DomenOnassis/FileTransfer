@@ -1,4 +1,12 @@
 const WS_URL = import.meta.env.VITE_SIGNALING_URL ?? "ws://localhost:3003";
+const ICE_SERVER = import.meta.env.ICE_SERVER_URL ?? "stun:stun.l.google.com:19302"
+
+const RTC_CONFIG: RTCConfiguration = { iceServers: [{ urls: ICE_SERVER }] };
+
+const CHUNK = 16 * 1024;            // 16KB
+const BLOCK = 1024 * 1024;          // 1MB
+const HIGH_WATER = 4 * 1024 * 1024; // 4MB 
+const LOW_WATER = 1024 * 1024;      // 1MB
 
 type Status =
   | "idle"
@@ -9,7 +17,55 @@ type Status =
   | "error"
   | "closed";
 
+type Link = "none" | "connecting" | "open" | "closed";
 type Peer = { peerId: string; deviceName?: string };
+
+export type Incoming = {
+    id: string;
+    name: string;
+    size: string;
+    done: number;
+    state: "active" | "done" | "failed";
+}
+
+type Rx = {
+    entry: Incoming;
+    name: string;
+    writer?: FileSystemWritableFileStream;
+    chunks: ArrayBuffer[];
+}
+
+function safeName(name: string) {
+    const base = name.split(/[\\/]/).pop() ?? "";
+    const cleaned = base.replace(/[\u0000-\u001f<>:"|?*]/g, "_").trim(); // null | invalid char
+    if(!cleaned || cleaned === "." || cleaned === "..") return "file";
+    return cleaned.slice(0, 200);
+}
+
+async function uniqueFile(dir: FileSystemDirectoryHandle, name: string) {
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : "";
+    let candidate = name;
+    let n = 1;
+    for (;;) {
+        try {
+            await dir.getFileHandle(candidate);
+            candidate = `${stem} (${n++})${ext}`;
+        } catch {
+            return dir.getFileHandle(candidate, { create: true });
+        }
+    }
+}
+
+function download(blob: Blob, name: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
 
 export class Session {
     status = $state<Status>("idle");
