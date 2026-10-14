@@ -18,7 +18,7 @@ type Status =
   | "closed";
 
 type Link = "none" | "connecting" | "open" | "closed";
-type Peer = { peerId: string; deviceName?: string };
+type Peer = { peerId: string; deviceName?: string; link?: Link };
 
 export type Incoming = {
     id: string;
@@ -48,7 +48,7 @@ async function uniqueFile(dir: FileSystemDirectoryHandle, name: string) {
     const ext = dot > 0 ? name.slice(dot) : "";
     let candidate = name;
     let n = 1;
-    for (;;) {
+    for(;;) {
         try {
             await dir.getFileHandle(candidate);
             candidate = `${stem} (${n++})${ext}`;
@@ -74,8 +74,19 @@ export class Session {
     requests = $state<Peer[]>([]);
     peers = $state<Peer[]>([]);
     error = $state<string | null>(null);
+    link = $state<Link>("none");
+    incoming = $state<Incoming[]>([]);
+    sending = $state(false);
+    progress = $state(0);
+    saveDir = $state.raw<FileSystemDirectoryHandle | null>(null);
 
     #ws?: WebSocket;
+    #pcs = new Map<string, RTCPeerConnection>();
+    #channels = new Map<string, RTCDataChannel>();
+    #queues = new Map<string, Promise<void>>();
+    #ice = new Map<string, RTCIceCandidateInit[]>();
+    #rxChain: Promise<void> = Promise.resolve();
+    #rx: Rx | null = null;
 
     async host() {
         this.#reset("host");
@@ -93,9 +104,45 @@ export class Session {
         const req = this.requests.find((r) => r.peerId === peerId);
         this.requests = this.requests.filter((r) => r.peerId !== peerId);
         this.#send({ type: "confirm-peer", peerId, accepted });
-        if (accepted && req) {
-        this.peers.push(req);
-        this.status = "connected";
+        if(accepted && req) {
+            this.peers.push({ ...req, link: "connecting" });
+            this.status = "connected";
+            this.#createPc(peerId, true);
+        }
+    }
+
+    async send(files: File[]) {
+        const targets = [...this.#channels.values()].filter((ch) => ch.readyState === "open");
+        if(this.sending || targets.length === 0 || files.length === 0) return;
+
+        this.sending = true;
+        this.progress = 0;
+        const total = files.reduce((n, f) => n + f.size, 0) * targets.length;
+        let sent = 0;
+
+        try {
+            for(const file of files) {
+                const id = crypto.randomUUID();
+                const header = JSON.stringify({t: "start", id, name: file.name, size: file.size });
+                for(const ch of targets) if(ch.readyState === "open") ch.send(header);
+                for(let offset = 0; offset < file.size; offset += BLOCK) {
+                    const block = await file.slice(offset, offset + BLOCK).arrayBuffer();
+                    for(let i = 0; i < block.byteLength; i += CHUNK) {
+                        const len = Math.min(CHUNK, block.byteLength - i);
+                        for(const ch of targets) {
+                            await this.#drain(ch);
+                            if(ch.readyState === "open") ch.send(new Uint8Array(block, i, len));
+                        }
+                        sent += len * targets.length;
+                        this.progress = total ? Math.round((sent / total) * 100) : 100;
+                    }
+                }
+                const footer = JSON.stringify({ t: "end", id });
+                for(const ch of targets) if(ch.readyState === "open") ch.send(footer);
+            }
+            this.progress = 100;
+        } finally {
+            this.sending = false;
         }
     }
 
@@ -112,6 +159,19 @@ export class Session {
         this.requests = [];
         this.peers = [];
         this.error = null;
+        this.link = "none";
+        this.incoming = [];
+        this.sending = false;
+        this.progress = 0;
+    }
+
+    #teardown() {
+        for(const pc of this.#pcs.values()) pc.close();
+        this.#pcs.clear();
+        this.#channels.clear();
+        this.#queues.clear();
+        this.#ice.clear();
+        this.#rxAbort();
     }
 
     #open() {
@@ -125,7 +185,7 @@ export class Session {
             reject(new Error("ws error"));
         };
         ws.onclose = () => {
-            if (this.status !== "error") this.status = "closed";
+            if(this.status !== "error") this.status = "closed";
         };
         ws.onmessage = (e) => {
             try {
@@ -140,12 +200,13 @@ export class Session {
     }
 
     #send(payload: object) {
-        if (this.#ws?.readyState === WebSocket.OPEN) {
-        this.#ws.send(JSON.stringify(payload));
+        if(this.#ws?.readyState === WebSocket.OPEN) {
+            this.#ws.send(JSON.stringify(payload));
         }
     }
 
     #fail(message: string) {
+        this.#teardown;
         this.error = message;
         this.status = "error";
     }
@@ -162,9 +223,13 @@ export class Session {
                 break;
 
             case "peer-left":
+                this.#pcs.get(msg.peerId)?.close();
+                this.#pcs.delete(msg.peerId);
+                this.#channels.delete(msg.peerId);
+                this.#ice.delete(msg.peerId);
                 this.requests = this.requests.filter((r) => r.peerId !== msg.peerId);
                 this.peers = this.peers.filter((p) => p.peerId !== msg.peerId);
-                if (this.peers.length === 0) this.status = "waiting";
+                if(this.peers.length === 0) this.status = "waiting";
                 break;
 
             case "awaiting-confirmation":
@@ -174,6 +239,11 @@ export class Session {
             case "joined":
                 this.info = { id: msg.code, password: "" };
                 this.status = "connected";
+                this.link = "connecting";
+                break;
+
+            case "signal":
+                this.#enqueue(msg.fromPeerId, () => this.#handleSignal(msg.fromPeerId, msg.data));
                 break;
 
             case "host-left":
@@ -188,5 +258,157 @@ export class Session {
                 this.#fail(msg.message);
                 break;
         }
+    }
+
+    #createPc(key: string, initiator: boolean) {
+        const pc = new RTCPeerConnection(RTC_CONFIG);
+        this.#pcs.set(key, pc);
+
+        pc.onicecandidate = (e) => {
+            if(e.candidate) this.#signal(key, { candidate: e.candidate.toJSON() });
+        };
+
+        pc.onconnectionstatechange = () => {
+            if(pc.connectionState === "failed" || pc.connectionState === "closed") {
+                this.#setLink(key, "closed");
+            }
+        }
+
+        if(initiator) {
+            this.#bindChannel(key, pc.createDataChannel("files"));
+            this.#enqueue(key, async () => {
+                await pc.setLocalDescription(await pc.createOffer());
+                this.#signal(key, { sdp: pc.localDescription });
+            });
+        } else {
+            pc.ondatachannel = (e) => this.#bindChannel(key, e.channel);
+        }
+        return pc;
+    }
+
+    #bindChannel(key: string, ch: RTCDataChannel) {
+        ch.binaryType = "arraybuffer";
+        ch.bufferedAmountLowThreshold = LOW_WATER;
+        this.#channels.set(key, ch);
+        ch.onopen = () => this.#setLink(key, "open");
+        ch.onclose = () => {
+            this.#channels.delete(key);
+            this.#setLink(key, "closed");
+            if(this.role === "peer") this.#rxAbort();
+        };
+        ch.onmessage = (e) => this.#onData(e.data);
+    }
+
+    #setLink(key: string, link: Link) {
+        if(this.role === "host") {
+            const p = this.peers.find((x) => x.peerId === key);
+            if(p) p.link = link;
+        } else {
+            this.link = link;
+        }
+    }
+
+    async #handleSignal(fromKey: string, data: any) {
+        const key = this.role === "host" ? fromKey : "host";
+        if(this.role === "host" && !this.#pcs.has(key)) return;
+        const pc = this.#pcs.get(key) ?? this.#createPc(key, false);
+
+        if(data?.sdp) {
+            await pc.setRemoteDescription(data.sdp);
+            const queued = this.#ice.get(key) ?? [];
+            this.#ice.delete(key);
+            for(const c of queued) await pc.addIceCandidate(c);
+            if(data.sdp.type === "offer") {
+                await pc.setLocalDescription(await pc.createAnswer());
+                this.#handleSignal(key, { sdp: pc.localDescription });
+            }
+        } else if(data?.candidate) {
+            if(pc.remoteDescription) {
+                await pc.addIceCandidate(data.candidate);
+            } else {
+                this.#ice.set(key, [...(this.#ice.get(key) ?? []), data.candidate]);
+            }
+        }
+    }
+
+    #signal(key: string, data: object) {
+        this.#send(
+            this.role === "host"
+                ? { type: "signal", targetPeerId: key, data }
+                : { type: "signal", data }
+        );
+    }
+
+    #enqueue(key: string, fn: () => Promise<void>) {
+        const prev = this.#queues.get(key) ?? Promise.resolve();
+        this.#queues.set(key, prev.then(fn).catch((e) => console.error("[rtc]", e)));
+    }
+
+    #drain(ch: RTCDataChannel) {
+        if(ch.bufferedAmount <= HIGH_WATER) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+            const done = () => {
+                ch.removeEventListener("bufferedamountlow", done);
+                ch.removeEventListener("close", done);
+                resolve();
+            };
+            ch.addEventListener("bufferedamountlow", done);
+            ch.addEventListener("close", done);
+        });
+    }
+
+    #onData(data: string | ArrayBuffer) {
+        this.#rxChain = this.#rxChain
+            .then(() => this.#handle(data))
+            .catch((e) => {
+                console.error("[rx]", e);
+                this.#rxAbort();
+            })
+    }
+
+    async #handle(data: string | ArrayBuffer) {
+        if(typeof data === "string") {
+            const m = JSON.parse(data);
+
+            if(m.t === "start") {
+                if (typeof m.id !== "string" || typeof m.name !== "string" || typeof m.size !== "number") return;
+                this.#rxAbort();
+                const name = safeName(m.name);
+                this.incoming.push({ id: m.id, name, size: m.size, done: 0, state: "active" });
+                const entry = this.incoming[this.incoming.length - 1];
+                const rx: Rx = { entry, name, chunks: [] };
+                this.#rx = rx;
+                if(this.saveDir) {
+                    const handle = await uniqueFile(this.saveDir, name);
+                    rx.writer = await handle.createWritable();
+                }
+            } else if(m.t === "end") {
+                const rx = this.#rx;
+                if(!rx || rx.entry !== m.id) return;
+                this.#rx = null;
+                if(rx.entry.done !== Number(rx.entry.size)) {
+                    rx.writer?.abort().catch(() => {});
+                    rx.entry.state = "failed";
+                    return;
+                }
+                if(rx.writer) await rx.writer.close();
+                else download(new Blob(rx.chunks), rx.name);
+                rx.entry.state = "done";
+            }
+            return;
+        }
+        const rx = this.#rx;
+        if(!rx) return;
+        if(rx.writer) await rx.writer.write(data);
+        else rx.chunks.push(data);
+        rx.entry.done += data.byteLength;
+    }
+
+    #rxAbort() {
+        const rx = this.#rx;
+        if(!rx) return;
+        this.#rx = null;
+        rx.writer?.abort().catch(() => {});
+        rx.entry.state = "failed";
     }
 }
