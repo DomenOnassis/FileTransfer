@@ -1,4 +1,4 @@
-const WS_URL = import.meta.env.VITE_SIGNALING_URL ?? "ws://localhost:3003";
+const WS_URL = import.meta.env.VITE_SIGNALING_URL ?? "ws://0.0.0.0:3003";
 const ICE_SERVER = import.meta.env.ICE_SERVER_URL ?? "stun:stun.l.google.com:19302"
 
 const RTC_CONFIG: RTCConfiguration = { iceServers: [{ urls: ICE_SERVER }] };
@@ -56,6 +56,10 @@ async function uniqueFile(dir: FileSystemDirectoryHandle, name: string) {
             return dir.getFileHandle(candidate, { create: true });
         }
     }
+}
+
+function newId() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function download(blob: Blob, name: string) {
@@ -122,7 +126,7 @@ export class Session {
 
         try {
             for(const file of files) {
-                const id = crypto.randomUUID();
+                const id = newId();
                 const header = JSON.stringify({t: "start", id, name: file.name, size: file.size });
                 for(const ch of targets) if(ch.readyState === "open") ch.send(header);
                 for(let offset = 0; offset < file.size; offset += BLOCK) {

@@ -278,5 +278,5 @@ wss.on("connection", (ws, req) => {
 });
 
 server.listen(port, () => {
-  log("listening", { port });
+  log("listening", { port, host: "0.0.0.0" });
 });
