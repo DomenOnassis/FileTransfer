@@ -171,7 +171,7 @@ Make sure you have the following installed:
 
 1. Clone the repository
    ```sh
-   git clone https://github.com/YOUR_USERNAME/FileTransfer.git
+   git clone https://github.com/DomenOnassis/FileTransfer.git
    cd FileTransfer
    ```
 2. Install the packages for the backend and the frontend separately
