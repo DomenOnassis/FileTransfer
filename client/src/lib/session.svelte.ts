@@ -1,4 +1,6 @@
-const WS_URL = import.meta.env.VITE_SIGNALING_URL ?? "ws://0.0.0.0:3003";
+import { SvelteMap } from "svelte/reactivity";
+
+const WS_URL = import.meta.env.SIGNALING_URL ?? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 const ICE_SERVER = import.meta.env.ICE_SERVER_URL ?? "stun:stun.l.google.com:19302"
 
 const RTC_CONFIG: RTCConfiguration = { iceServers: [{ urls: ICE_SERVER }] };
@@ -85,10 +87,10 @@ export class Session {
     saveDir = $state.raw<FileSystemDirectoryHandle | null>(null);
 
     #ws?: WebSocket;
-    #pcs = new Map<string, RTCPeerConnection>();
-    #channels = new Map<string, RTCDataChannel>();
-    #queues = new Map<string, Promise<void>>();
-    #ice = new Map<string, RTCIceCandidateInit[]>();
+    #pcs = new SvelteMap<string, RTCPeerConnection>();
+    #channels = new SvelteMap<string, RTCDataChannel>();
+    #queues = new SvelteMap<string, Promise<void>>();
+    #ice = new SvelteMap<string, RTCIceCandidateInit[]>();
     #rxChain: Promise<void> = Promise.resolve();
     #rx: Rx | null = null;
 
