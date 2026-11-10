@@ -4,15 +4,31 @@
 
   const session = new Session();
 
+  let dragging = $state(false);
   let files = $state<File[]>([]);
 
   const sessionId = $derived(session.info?.id ?? "...");
   const sessionPwd = $derived(session.info?.password ?? "...");
   const connectedPeers = $derived(session.peers);
 
+  function addFiles(list: FileList | null | undefined) {
+    if (list) files = [...files, ...Array.from(list)];
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    dragging = false;
+    addFiles(e.dataTransfer?.files);
+  }
+
   onMount(() => {
-    session.host();
-    return () => session.close();
+    const stop = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => {
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+    };
   });
 
   function handleFileSelect(event: Event) {
@@ -151,7 +167,12 @@
       <span class="text-xs font-mono uppercase tracking-widest text-neutral-400 block">
         // Select Files
       </span>
-      <label class="flex flex-col items-center justify-center p-6 border border-dashed border-neutral-700 bg-neutral-900/40 hover:bg-neutral-900/80 transition-colors cursor-pointer text-center">
+      <label ondragover={(e) => { e.preventDefault(); dragging = true; }}
+        ondragleave={() => (dragging = false)}
+        ondrop={handleDrop}
+        class="flex flex-col items-center justify-center p-6 border border-dashed transition-colors cursor-pointer text-center
+          {dragging ? 'border-white bg-neutral-900' : 'border-neutral-700 bg-neutral-900/40 hover:bg-neutral-900/80'}"
+      >
         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-neutral-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
