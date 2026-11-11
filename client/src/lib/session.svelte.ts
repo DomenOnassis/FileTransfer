@@ -1,6 +1,6 @@
 import { SvelteMap } from "svelte/reactivity";
 
-const WS_URL = import.meta.env.SIGNALING_URL ?? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 const ICE_SERVER = import.meta.env.ICE_SERVER_URL ?? "stun:stun.l.google.com:19302"
 
 const RTC_CONFIG: RTCConfiguration = { iceServers: [{ urls: ICE_SERVER }] };

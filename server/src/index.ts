@@ -31,6 +31,7 @@ interface Session {
   peers: Map<string, WebSocket>;
   createdAt: number;
   badAttempts: number;
+  emptySince: number | null;
 }
 
 const sessions = new Map<string, Session>();
@@ -86,8 +87,8 @@ function destroySession(id: string, notify: object) {
 setInterval(() => {
   const now = Date.now();
   for (const [id, s] of sessions) {
-    if (s.peers.size === 0 && now - s.createdAt > SESSION_JOIN_TTL_MS) {
-      log("session-expired", { id });
+    const idle = s.peers.size === 0 && s.pending.size === 0 && s.emptySince !== null;
+    if (idle && now - s.emptySince! > SESSION_JOIN_TTL_MS) {
       destroySession(id, { type: "session-expired" });
     }
   }
@@ -146,6 +147,7 @@ wss.on("connection", (ws, req) => {
         peers: new Map(),
         createdAt: Date.now(),
         badAttempts: 0,
+        emptySince: Date.now()
       });
       role = "host";
       sessionId = id;
@@ -188,6 +190,16 @@ wss.on("connection", (ws, req) => {
       peerId = genPeerId();
       s.pending.set(peerId, ws);
 
+      const pendingPeerId = peerId;
+      setTimeout(() => {
+        if (s.pending.get(pendingPeerId) === ws) {
+          s.pending.delete(pendingPeerId);
+          send(s.host, { type: "peer-left", peerId: pendingPeerId });
+          send(ws, { type: "error", message: "Host did not respond" });
+          ws.close();
+        }
+      }, 2 * 60 * 1000);
+
       const deviceName = typeof msg.deviceName === "string" ? msg.deviceName.slice(0, 40) : undefined;
       log("join", { conn, id, peerId, deviceName, pending: s.pending.size });
       send(s.host, { type: "connection-request", peerId, deviceName });
@@ -200,6 +212,7 @@ wss.on("connection", (ws, req) => {
         log("confirm-rejected", { conn, reason: "not host or no session" });
         return;
       }
+
       const s = sessions.get(sessionId);
       if (!s || typeof msg.peerId !== "string") {
         log("confirm-rejected", { conn, reason: "no session or bad peerId", peerId: msg.peerId });
@@ -220,6 +233,7 @@ wss.on("connection", (ws, req) => {
 
       if (msg.accepted === true) {
         s.peers.set(msg.peerId, target);
+        s.emptySince = null;
         log("confirm-accepted", { sessionId, peerId: msg.peerId, peers: s.peers.size });
         send(target, { type: "joined", code: sessionId, peerId: msg.peerId });
       } else {
@@ -267,6 +281,7 @@ wss.on("connection", (ws, req) => {
     } else if (role === "peer" && peerId) {
       s.peers.delete(peerId);
       s.pending.delete(peerId);
+      if (s.peers.size === 0) s.emptySince = Date.now();
       log("peer-left", { sessionId, peerId, peers: s.peers.size });
       send(s.host, { type: "peer-left", peerId });
     }
