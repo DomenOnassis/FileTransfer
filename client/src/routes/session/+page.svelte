@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Session } from "#lib/session.svelte.ts";
+  import QRCode from "qrcode"
 
   const session = new Session();
 
   let linkCopied = $state(false);
+  let qrDataUrl = $state<string | null>(null);
   let dragging = $state(false);
   let files = $state<File[]>([]);
 
@@ -17,6 +19,21 @@
       ? `${location.origin}/connect#id=${session.info.id}&pwd=${session.info.password}`
       : null
   );
+
+  $effect(() => {
+    const link = inviteLink;
+    if (!link) {
+      qrDataUrl = null;
+      return;
+    }
+    QRCode.toDataURL(link, {
+      width: 192,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" }
+    })
+      .then((url) => (qrDataUrl = url))
+      .catch(() => (qrDataUrl = null));
+  });
 
   function addFiles(list: FileList | null | undefined) {
     if (list) files = [...files, ...Array.from(list)];
@@ -138,6 +155,7 @@
       </div>
     </div>
 
+    <!-- Invite link -->
     <button
       onclick={copyInvite}
       disabled={!inviteLink}
@@ -145,6 +163,16 @@
     >
       {linkCopied ? "Link copied" : "Copy invite link"}
     </button>
+
+    <!-- QR code -->
+    {#if qrDataUrl}
+      <div class="flex flex-col items-center gap-2">
+        <img src={qrDataUrl} alt="Scan to join session" class="w-48 h-48" />
+        <span class="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+          Scan to join
+        </span>
+      </div>
+    {/if}
 
     {#if session.requests.length > 0}
       <div class="space-y-2">
