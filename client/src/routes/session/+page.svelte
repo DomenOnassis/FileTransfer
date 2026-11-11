@@ -6,6 +6,7 @@
   const session = new Session();
 
   let linkCopied = $state(false);
+  let showQr = $state(false);
   let qrDataUrl = $state<string | null>(null);
   let dragging = $state(false);
   let files = $state<File[]>([]);
@@ -155,19 +156,29 @@
       </div>
     </div>
 
-    <!-- Invite link -->
-    <button
-      onclick={copyInvite}
-      disabled={!inviteLink}
-      class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white disabled:opacity-30 cursor-pointer"
-    >
-      {linkCopied ? "Link copied" : "Copy invite link"}
-    </button>
+    <!-- Invites -->
+    <div class="grid grid-cols-2 gap-2">
+      <button
+        onclick={copyInvite}
+        disabled={!inviteLink}
+        class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white disabled:opacity-30 cursor-pointer"
+      >
+        {linkCopied ? "Link copied" : "Copy invite link"}
+      </button>
+
+      <button
+        onclick={() => (showQr = !showQr)}
+        disabled={!inviteLink}
+        class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white disabled:opacity-30 cursor-pointer"
+      >
+        {showQr ? "Hide QR code" : "Show QR code"}
+      </button>
+    </div>
 
     <!-- QR code -->
-    {#if qrDataUrl}
-      <div class="flex flex-col items-center gap-2">
-        <img src={qrDataUrl} alt="Scan to join session" class="w-48 h-48" />
+    {#if showQr && qrDataUrl}
+      <div class="flex flex-col items-center gap-2 pt-2 pb-2">
+        <img src={qrDataUrl} alt="Scan to join session" class="w-48 h-48 bg-white p-2" />
         <span class="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
           Scan to join
         </span>
