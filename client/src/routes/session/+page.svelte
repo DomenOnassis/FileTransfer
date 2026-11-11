@@ -22,6 +22,7 @@
   }
 
   onMount(() => {
+    session.host();
     const stop = (e: DragEvent) => e.preventDefault();
     window.addEventListener("dragover", stop);
     window.addEventListener("drop", stop);
@@ -33,7 +34,8 @@
 
   function handleFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
-    if (input.files) files = [...files, ...Array.from(input.files)];
+    addFiles(input.files);
+    input.value = "";
   }
 
   function removeFile(index: number) {
@@ -153,7 +155,7 @@
           {#each connectedPeers as peer}
             <div class="flex items-center justify-between p-2 bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-300">
               <span>{peer.deviceName ?? peer.peerId}</span>
-              <span class="text-[10px] uppercase {peer.link === 'open' ? 'text-emerald-400' : 'text.amber.400'}">
+              <span class="text-[10px] uppercase {peer.link === 'open' ? 'text-emerald-400' : 'text-amber-400'}">
                 {peer.link === "open" ? "Active" : peer.link === "closed" ? "Closed" : "Linking"}
               </span>
             </div>
