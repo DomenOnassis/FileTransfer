@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Session } from "#lib/session.svelte.ts";
+  import { goto } from "$app/navigation";
 
   const session = new Session();
 
@@ -27,7 +28,20 @@
     return f.size ? Math.min((f.done / f.size) * 100) : 100;
   }
 
-  onMount(() => () => session.close());
+  onMount(() => {
+    const params = new URLSearchParams(location.hash.slice(1));
+    const id = params.get("id");
+    const pwd = params.get("pwd");
+
+    if (id && pwd) {
+      goto(location.pathname, { state: {}, shallow: true, replace: true });
+      sessionIdInput = id;
+      sessionPwdInput = pwd;
+      session.join(id, pwd, navigator.platform);
+    }
+
+    return () => session.close();
+  });
 
   function handleConnect(e: SubmitEvent) {
     e.preventDefault();
