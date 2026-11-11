@@ -4,12 +4,19 @@
 
   const session = new Session();
 
+  let linkCopied = $state(false);
   let dragging = $state(false);
   let files = $state<File[]>([]);
 
   const sessionId = $derived(session.info?.id ?? "...");
   const sessionPwd = $derived(session.info?.password ?? "...");
   const connectedPeers = $derived(session.peers);
+
+  const inviteLink = $derived(
+    session.info
+      ? `${location.origin}/connect#id=${session.info.id}&pwd=${session.info.password}`
+      : null
+  );
 
   function addFiles(list: FileList | null | undefined) {
     if (list) files = [...files, ...Array.from(list)];
@@ -48,6 +55,15 @@
     if(!canSend) return;
     await session.send(files);
     files = [];
+  }
+
+  async function copyInvite() {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      linkCopied = true;
+      setTimeout(() => (linkCopied = false), 1500);
+    } catch {}
   }
 </script>
 
@@ -121,6 +137,14 @@
         </code>
       </div>
     </div>
+
+    <button
+      onclick={copyInvite}
+      disabled={!inviteLink}
+      class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white disabled:opacity-30 cursor-pointer"
+    >
+      {linkCopied ? "Link copied" : "Copy invite link"}
+    </button>
 
     {#if session.requests.length > 0}
       <div class="space-y-2">
