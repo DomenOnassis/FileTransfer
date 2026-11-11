@@ -1,12 +1,18 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { Session } from "#lib/session.svelte.ts";
   import { goto } from "$app/navigation";
+  import { onMount, tick } from "svelte";
+  import QrScanner from "qr-scanner";
 
   const session = new Session();
 
   let sessionIdInput = $state("");
   let sessionPwdInput = $state("");
+
+  let scanning = $state(false);
+  let scanError = $state<string | null>(null);
+  let videoEl = $state<HTMLVideoElement>();
+  let scanner: QrScanner | undefined;
 
   const isConnecting = $derived(session.status === "connecting" || session.status === "awaiting-confirmation");
   const isConnected = $derived(session.status === "connected");
@@ -40,7 +46,10 @@
       session.join(id, pwd, navigator.platform);
     }
 
-    return () => session.close();
+    return () => {
+      stopScan();
+      session.close();
+    };
   });
 
   function handleConnect(e: SubmitEvent) {
@@ -53,6 +62,57 @@
     session.close();
     sessionIdInput = "";
     sessionPwdInput = "";
+  }
+
+  function joinFromLink(text: string): boolean {
+    try {
+      const params = new URLSearchParams(new URL(text).hash.slice(1));
+      const id = params.get("id");
+      const pwd = params.get("pwd");
+      if (!id || !pwd) return false;
+      sessionIdInput = id;
+      sessionPwdInput = pwd;
+      session.join(id, pwd, navigator.platform);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function stopScan() {
+    scanner?.stop();
+    scanner?.destroy();
+    scanner = undefined;
+    scanning = false;
+  }
+
+  async function startScan() {
+    scanError = null;
+    scanning = true;
+    await tick();
+    if (!videoEl) return;
+
+    scanner = new QrScanner(
+      videoEl,
+      (result) => {
+        if (joinFromLink(result.data)) stopScan();
+        else scanError = "Not a valid invite code";
+      },
+      {
+        preferredCamera: "environment",
+        highlightScanRegion: true,
+        returnDetailedScanResult: true,
+        maxScansPerSecond: 5
+      }
+    );
+
+    try {
+      await scanner.start();
+    } catch (err) {
+      console.error("[scan]", err);
+      stopScan();
+      scanError = `Camera error: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 </script>
 
@@ -93,6 +153,36 @@
     {/if}
 
     {#if !isConnected && !isConnecting}
+      {#if scanning}
+        <div class="space-y-3">
+          <video
+            bind:this={videoEl}
+            class="w-full aspect-square object-cover bg-neutral-900"
+            playsinline
+            muted
+          ></video>
+          <button
+            type="button"
+            onclick={stopScan}
+            class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white cursor-pointer"
+          >
+            Cancel scan
+          </button>
+        </div>
+      {:else}
+        <button
+          type="button"
+          onclick={startScan}
+          class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white cursor-pointer"
+        >
+          Scan QR code
+        </button>
+      {/if}
+
+      {#if scanError}
+        <p class="text-xs font-mono text-red-400 uppercase">{scanError}</p>
+      {/if}
+
       <!-- Connection Form -->
       <form onsubmit={handleConnect} class="w-full space-y-4">
         <div class="w-full flex flex-col gap-1.5 text-left">

@@ -1,10 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Session } from "#lib/session.svelte.ts";
+  import QRCode from "qrcode"
 
   const session = new Session();
 
   let linkCopied = $state(false);
+  let showQr = $state(false);
+  let qrDataUrl = $state<string | null>(null);
   let dragging = $state(false);
   let files = $state<File[]>([]);
 
@@ -17,6 +20,21 @@
       ? `${location.origin}/connect#id=${session.info.id}&pwd=${session.info.password}`
       : null
   );
+
+  $effect(() => {
+    const link = inviteLink;
+    if (!link) {
+      qrDataUrl = null;
+      return;
+    }
+    QRCode.toDataURL(link, {
+      width: 192,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" }
+    })
+      .then((url) => (qrDataUrl = url))
+      .catch(() => (qrDataUrl = null));
+  });
 
   function addFiles(list: FileList | null | undefined) {
     if (list) files = [...files, ...Array.from(list)];
@@ -138,13 +156,34 @@
       </div>
     </div>
 
-    <button
-      onclick={copyInvite}
-      disabled={!inviteLink}
-      class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white disabled:opacity-30 cursor-pointer"
-    >
-      {linkCopied ? "Link copied" : "Copy invite link"}
-    </button>
+    <!-- Invites -->
+    <div class="grid grid-cols-2 gap-2">
+      <button
+        onclick={copyInvite}
+        disabled={!inviteLink}
+        class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white disabled:opacity-30 cursor-pointer"
+      >
+        {linkCopied ? "Link copied" : "Copy invite link"}
+      </button>
+
+      <button
+        onclick={() => (showQr = !showQr)}
+        disabled={!inviteLink}
+        class="w-full border border-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-widest py-2.5 hover:text-white disabled:opacity-30 cursor-pointer"
+      >
+        {showQr ? "Hide QR code" : "Show QR code"}
+      </button>
+    </div>
+
+    <!-- QR code -->
+    {#if showQr && qrDataUrl}
+      <div class="flex flex-col items-center gap-2 pt-2 pb-2">
+        <img src={qrDataUrl} alt="Scan to join session" class="w-48 h-48 bg-white p-2" />
+        <span class="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+          Scan to join
+        </span>
+      </div>
+    {/if}
 
     {#if session.requests.length > 0}
       <div class="space-y-2">
