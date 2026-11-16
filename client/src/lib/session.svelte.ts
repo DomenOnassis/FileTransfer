@@ -85,6 +85,7 @@ export class Session {
     sending = $state(false);
     progress = $state(0);
     saveDir = $state.raw<FileSystemDirectoryHandle | null>(null);
+    invite = $state<string | null>(null);
 
     #ws?: WebSocket;
     #pcs = new SvelteMap<string, RTCPeerConnection>();
@@ -93,6 +94,17 @@ export class Session {
     #ice = new SvelteMap<string, RTCIceCandidateInit[]>();
     #rxChain: Promise<void> = Promise.resolve();
     #rx: Rx | null = null;
+    #inviteTimer?: ReturnType<typeof setTimeout>;
+
+    requestInvite() {
+        this.#send({ type: "create-invite" });
+    }
+
+    async joinWithToken(token: string, deviceName?: string) {
+        this.#reset("peer");
+        await this.#open();
+        this.#send({ type: "join", token, deviceName });
+    }
 
     async host() {
         this.#reset("host");
@@ -170,6 +182,7 @@ export class Session {
         this.incoming = [];
         this.sending = false;
         this.progress = 0;
+        this.invite = null;
     }
 
     #teardown() {
@@ -179,6 +192,8 @@ export class Session {
         this.#queues.clear();
         this.#ice.clear();
         this.#rxAbort();
+        clearTimeout(this.#inviteTimer);
+        this.invite = null;
     }
 
     #open() {
@@ -223,6 +238,16 @@ export class Session {
             case "created":
                 this.info = msg.session;
                 this.status = "waiting";
+                this.requestInvite();
+                break;
+
+            case "invite":
+                this.invite = msg.token;
+                clearTimeout(this.#inviteTimer);
+                this.#inviteTimer = setTimeout(
+                    () => this.requestInvite(),
+                    Math.max(5_000, msg.ttlMs - 30_000)
+                );
                 break;
 
             case "connection-request":
