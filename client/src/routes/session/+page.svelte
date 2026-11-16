@@ -16,9 +16,7 @@
   const connectedPeers = $derived(session.peers);
 
   const inviteLink = $derived(
-    session.info
-      ? `${location.origin}/connect#id=${session.info.id}&pwd=${session.info.password}`
-      : null
+    session.invite ? `${location.origin}/connect#t=${session.invite}` : null
   );
 
   $effect(() => {
@@ -54,6 +52,7 @@
     return () => {
       window.removeEventListener("dragover", stop);
       window.removeEventListener("drop", stop);
+      session.close();
     };
   });
 

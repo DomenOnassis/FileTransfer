@@ -10,6 +10,8 @@ const SESSION_JOIN_TTL_MS = 5 * 60 * 1000;
 const MAX_BAD_PASSWORDS = 5;
 const ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PWD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const INVITE_TTL_MS = 5 * 60 * 1000;
+const MAX_INVITES_PER_SESSION = 10;
 
 const log = (tag: string, data?: object) => {
   const time = new Date().toISOString().slice(11, 23);
@@ -34,7 +36,21 @@ interface Session {
   emptySince: number | null;
 }
 
+interface Invite {
+  sessionId: string;
+  expires: number;
+}
+
+
 const sessions = new Map<string, Session>();
+const invites = new Map<string, Invite>();
+const genToken = () => randomBytes(24).toString("base64url");
+
+function activeInvites(sessionId: string) {
+  let n = 0;
+  for (const i of invites.values()) if (i.sessionId === sessionId) n++;
+  return n;
+}
 
 function randomString(alphabet: string, length: number): string {
   let out = "";
@@ -71,6 +87,8 @@ function destroySession(id: string, notify: object) {
   const s = sessions.get(id);
   if (!s) return;
   sessions.delete(id);
+  for (const [token, inv] of invites) { if (inv.sessionId === id) invites.delete(token); }
+
   log("session-destroyed", {
     id,
     notify,
@@ -92,6 +110,7 @@ setInterval(() => {
       destroySession(id, { type: "session-expired" });
     }
   }
+  for (const [token, inv] of invites) { if (inv.expires < now) invites.delete(token); }
 }, 30_000);
 
 const alive = new WeakMap<WebSocket, boolean>();
@@ -161,28 +180,47 @@ wss.on("connection", (ws, req) => {
         log("join-ignored", { conn, role });
         return;
       }
-      if (typeof msg.id !== "string" || typeof msg.password !== "string") {
-        log("join-malformed", { conn });
-        send(ws, { type: "error", message: "Malformed join request" });
-        return;
-      }
+      
+      let id: string;
+      let s: Session | undefined;
 
-      const id = msg.id.toUpperCase();
-      const s = sessions.get(id);
-      if (!s) {
-        log("join-no-session", { conn, id });
-        send(ws, { type: "error", message: "Invalid session ID or password" });
-        return;
-      }
-      if (!safeEqual(s.password, msg.password)) {
-        s.badAttempts++;
-        log("join-bad-password", { conn, id, badAttempts: s.badAttempts });
-        send(ws, { type: "error", message: "Invalid session ID or password" });
-        if (s.badAttempts >= MAX_BAD_PASSWORDS) {
-          log("join-lockout", { id });
-          destroySession(id, { type: "session-expired" });
+      if (typeof msg.token === "string") {
+        const invite = invites.get(msg.token);
+        // invites.delete(msg.token); <- for single use invites
+        if (!invite || invite.expires < Date.now()) {
+          log("join-bad-token", { conn });
+          send(ws, { type: "error", message: "Invite link expired or invalid" });
+          return;
         }
-        return;
+        id = invite.sessionId;
+        s = sessions.get(id);
+        if (!s) {
+          send(ws, { type: "error", message: "Invite link expired or invalid" });
+          return;
+        }
+      } else {
+        if (typeof msg.id !== "string" || typeof msg.password !== "string") {
+          log("join-malformed", { conn });
+          send(ws, { type: "error", message: "Malformed join request" });
+          return;
+        }
+        id = msg.id.toUpperCase();
+        s = sessions.get(id);
+        if (!s) {
+          log("join-no-session", { conn, id });
+          send(ws, { type: "error", message: "Invalid session ID or password" });
+          return;
+        }
+        if (!safeEqual(s.password, msg.password)) {
+          s.badAttempts++;
+          log("join-bad-password", { conn, id, badAttempts: s.badAttempts });
+          send(ws, { type: "error", message: "Invalid session ID or password" });
+          if (s.badAttempts >= MAX_BAD_PASSWORDS) {
+            log("join-lockout", { id });
+            destroySession(id, { type: "session-expired" });
+          }
+          return;
+        }
       }
 
       role = "peer";
@@ -264,6 +302,22 @@ wss.on("connection", (ws, req) => {
       } else {
         log("signal-dropped", { conn, reason: "not allowed", role, peerId });
       }
+      return;
+    }
+
+    if (msg.type === "create-invite") {
+      if (role !== "host" || !sessionId) {
+        log("invite-rejected", { conn, reason: "not host" });
+        return;
+      }
+      if (activeInvites(sessionId) >= MAX_INVITES_PER_SESSION) {
+        log("invite-rejected", { conn, reason: "limit" });
+        return;
+      }
+      const token = genToken();
+      invites.set(token, { sessionId, expires: Date.now() + INVITE_TTL_MS });
+      log("invite-created", { sessionId, active: activeInvites(sessionId) });
+      send(ws, { type: "invite", token, ttlMs: INVITE_TTL_MS });
       return;
     }
 

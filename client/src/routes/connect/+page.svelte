@@ -36,14 +36,11 @@
 
   onMount(() => {
     const params = new URLSearchParams(location.hash.slice(1));
-    const id = params.get("id");
-    const pwd = params.get("pwd");
-
-    if (id && pwd) {
+    const token = params.get("t");
+    
+    if (token) {
       goto(location.pathname, { state: {}, shallow: true, replace: true });
-      sessionIdInput = id;
-      sessionPwdInput = pwd;
-      session.join(id, pwd, navigator.platform);
+      session.joinWithToken(token, navigator.platform);
     }
 
     return () => {
@@ -67,12 +64,9 @@
   function joinFromLink(text: string): boolean {
     try {
       const params = new URLSearchParams(new URL(text).hash.slice(1));
-      const id = params.get("id");
-      const pwd = params.get("pwd");
-      if (!id || !pwd) return false;
-      sessionIdInput = id;
-      sessionPwdInput = pwd;
-      session.join(id, pwd, navigator.platform);
+      const token = params.get("t");
+      if (!token) return false;
+      session.joinWithToken(token, navigator.platform);
       return true;
     } catch {
       return false;
@@ -228,7 +222,7 @@
       <!-- Waiting / Handshake State -->
       <div class="py-8 space-y-4 text-center">
         <div class="text-xs font-mono text-neutral-400 uppercase tracking-widest animate-pulse">
-          Connecting to {sessionIdInput}...
+          Connecting...
         </div>
         <p class="text-xs font-mono text-neutral-500">
           Waiting for host to accept your connection request.
