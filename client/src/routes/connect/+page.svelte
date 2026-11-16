@@ -120,7 +120,7 @@
   <title>FileTransfer - Peer</title>
 </svelte:head>
 
-<main class="min-h-screen bg-black text-neutral-100 flex flex-col items-center justify-center p-4">
+<main class="min-h-screen text-neutral-100 flex flex-col items-center justify-center p-4">
   
   <h1 class="text-3xl font-mono tracking-widest uppercase mb-6 text-white">
     FileTransfer
