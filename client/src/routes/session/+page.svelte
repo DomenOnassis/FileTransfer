@@ -52,6 +52,7 @@
     return () => {
       window.removeEventListener("dragover", stop);
       window.removeEventListener("drop", stop);
+      session.close();
     };
   });
 

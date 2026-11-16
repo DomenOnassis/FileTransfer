@@ -222,7 +222,7 @@
       <!-- Waiting / Handshake State -->
       <div class="py-8 space-y-4 text-center">
         <div class="text-xs font-mono text-neutral-400 uppercase tracking-widest animate-pulse">
-          Connecting to {sessionIdInput}...
+          Connecting...
         </div>
         <p class="text-xs font-mono text-neutral-500">
           Waiting for host to accept your connection request.

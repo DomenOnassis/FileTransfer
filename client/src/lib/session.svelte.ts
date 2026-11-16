@@ -252,6 +252,7 @@ export class Session {
 
             case "connection-request":
                 this.requests.push({ peerId: msg.peerId, deviceName: msg.deviceName });
+                this.requestInvite();
                 break;
 
             case "peer-left":
