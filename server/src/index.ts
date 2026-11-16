@@ -186,7 +186,7 @@ wss.on("connection", (ws, req) => {
 
       if (typeof msg.token === "string") {
         const invite = invites.get(msg.token);
-        invites.delete(msg.token);
+        // invites.delete(msg.token); <- for single use invites
         if (!invite || invite.expires < Date.now()) {
           log("join-bad-token", { conn });
           send(ws, { type: "error", message: "Invite link expired or invalid" });

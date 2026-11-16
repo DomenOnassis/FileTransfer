@@ -207,6 +207,7 @@ export class Session {
             reject(new Error("ws error"));
         };
         ws.onclose = () => {
+            if (this.#ws !== ws) return;
             if(this.status !== "error") this.status = "closed";
         };
         ws.onmessage = (e) => {
